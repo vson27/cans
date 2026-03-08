@@ -1,0 +1,50 @@
+ICMP packets
+icmp
+Used when analyzing ping traffic.
+________________________________________
+TCP packets
+tcp
+________________________________________
+UDP packets
+udp
+________________________________________
+HTTPS traffic
+tcp.port == 443
+________________________________________
+DNS traffic
+dns
+________________________________________
+DHCP traffic
+udp.port == 67 || udp.port == 68
+This is commonly asked.
+________________________________________
+Excluding localhost
+Sometimes the question asks to ignore local traffic.
+!(ip.addr == 127.0.0.1)
+
+THREEWAY HANDSHAKE
+Sequence:
+Client → Server : SYN
+Server → Client : SYN-ACK
+Client → Server : ACK
+In Wireshark you can search:
+tcp.flags.syn == 1
+BROADCAST ETHERNET ADDRESS
+The broadcast MAC address is:
+FF:FF:FF:FF:FF:FF 
+
+When HTTPS starts, TLS handshake occurs.
+Typical packets:
+Client Hello
+Server Hello
+Certificate
+Server Hello Done
+Client Key Exchange
+Finished
+In Wireshark filter:
+tls
+or
+ssl
+
+
+
