@@ -1,0 +1,196 @@
+#include <stdio.h>
+
+int main() {
+    char input[100];
+
+    printf("Enter some text: ");
+    scanf("%99s", input);
+
+    printf("You entered: ");
+    printf(input);   // Vulnerability
+    printf("%s", input); //fix
+
+    printf("\n");
+
+    return 0;
+} 
+
+gcc format_vuln.c -o format_vuln
+
+//BO
+
+#include <stdio.h>
+
+void vulnerable() {
+
+    char buffer[10];
+
+    printf("Enter some text: ");
+    gets(buffer);   // Dangerous function
+
+    printf("You entered: %s\n", buffer);
+}
+
+int main() {
+
+    vulnerable();
+
+    return 0;
+}
+
+#include <stdio.h>
+
+void safe() {
+
+    char buffer[10];
+
+    printf("Enter some text: ");
+    fgets(buffer, sizeof(buffer), stdin);
+
+    printf("You entered: %s\n", buffer);
+}
+
+int main() {
+
+    safe();
+
+    return 0;
+}
+
+gcc buffer_vuln.c -o buffer_vuln -fno-stack-protector
+gcc vuln.c -o vuln -fstack-protector
+
+//SO
+#include <stdio.h>
+
+void secret() {
+    printf("Secret function executed!\n");
+}
+
+void vulnerable() {
+
+    char buffer[8];
+
+    printf("Enter input: ");
+    gets(buffer);   // overflow
+
+}
+
+int main() {
+
+    vulnerable();
+
+    printf("Program finished.\n");
+
+    return 0;
+}
+
+//UAF
+
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int *ptr = (int*)malloc(sizeof(int));
+    *ptr = 100;
+    printf("Value before free: %d\n", *ptr);
+    free(ptr);
+    printf("Memory freed\n");
+    printf("Access after free: %d\n", *ptr);  // Vulnerability
+    return 0;
+}
+
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    int *ptr = (int*)malloc(sizeof(int));
+    *ptr = 100;
+    printf("Value before free: %d\n", *ptr);
+    free(ptr);
+    ptr = NULL;
+    if(ptr != NULL)
+        printf("%d\n", *ptr);
+    else
+        printf("Pointer is NULL\n");
+    return 0;
+}
+
+//DF
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+
+    int *ptr = malloc(sizeof(int));
+
+    *ptr = 42;
+
+    free(ptr);
+    free(ptr);   // double free vulnerability
+
+    printf("Program finished\n");
+
+    return 0;
+}
+
+//IO
+#include <stdio.h>
+#include <limits.h>
+
+int main() {
+
+    int a = INT_MAX;
+
+    int b = a + 1;
+
+    printf("Result: %d\n", b);
+
+    return 0;
+}
+
+//dangptr
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+
+    int *ptr = malloc(sizeof(int));
+
+    *ptr = 50;
+
+    free(ptr);
+
+    printf("%d\n", *ptr);   // dangling pointer
+
+    return 0;
+}
+
+//obo
+#include <stdio.h>
+
+int main() {
+
+    char buf[5];
+
+    for(int i=0;i<=5;i++)
+        buf[i] = 'A';   // off-by-one overflow
+
+    return 0;
+}
+
+//inj
+#include <stdlib.h>
+#include <stdio.h>
+
+int main() {
+
+    char cmd[100];
+
+    scanf("%s", cmd);
+
+    system(cmd);   // dangerous
+
+    return 0;
+}
+rm -rf /
