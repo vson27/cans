@@ -1,23 +1,27 @@
 ICMP packets
 icmp
 Used when analyzing ping traffic.
-________________________________________
+Echo request
+icmp.type == 8
+Echo reply
+icmp.type == 0
+
 TCP packets
 tcp
-________________________________________
+
 UDP packets
 udp
-________________________________________
+
 HTTPS traffic
 tcp.port == 443
-________________________________________
+
 DNS traffic
 dns
-________________________________________
+
 DHCP traffic
 udp.port == 67 || udp.port == 68
 This is commonly asked.
-________________________________________
+
 Excluding localhost
 Sometimes the question asks to ignore local traffic.
 !(ip.addr == 127.0.0.1)
@@ -46,5 +50,124 @@ tls
 or
 ssl
 
+Port Filters
+TCP Port
+tcp.port == 80
+UDP Port
+udp.port == 53
+HTTPS
+tcp.port == 443
+SSH
+tcp.port == 22
+Multiple Ports
+tcp.port == 80 || tcp.port == 443
+
+SYN packets
+tcp.flags.syn == 1
+Shows connection starts.
+SYN without ACK
+tcp.flags.syn == 1 && tcp.flags.ack == 0
+First handshake packet.
+ACK packets
+tcp.flags.ack == 1
+TCP Retransmissions
+tcp.analysis.retransmission
+Useful for troubleshooting.
+TCP Stream Filter
+Follow a single connection.
+tcp.stream eq 0
+
+ARP Filters
+Used for MAC address resolution.
+All ARP traffic
+arp
+ARP requests
+arp.opcode == 1
+ARP replies
+arp.opcode == 2
+
+DHCP traffic
+bootp
+or
+udp.port == 67 || udp.port == 68
 
 
+Exclude localhost
+!(ip.addr == 127.0.0.1)
+Exclude broadcast
+!(eth.dst == ff:ff:ff:ff:ff:ff)
+
+DNS queries
+dns.flags.response == 0
+DNS responses
+dns.flags.response == 1
+
+frame.len > 1000
+
+DNS Query
+nslookup google.com
+or
+dig google.com
+
+Check Network Interfaces
+ip a
+or
+ifconfig 
+
+Trace Route
+traceroute google.com
+
+Check Open Ports
+netstat -tuln
+or
+ss -tuln 
+
+Check Routing Table
+ip route 
+
+--
+
+Basic Host Discovery (Ping Scan)
+nmap -sn 192.168.1.20
+
+Basic Port Scan Find open ports.
+nmap 192.168.1.20
+
+Scan All Ports
+Default scan checks 1000 ports only. To scan all ports:
+nmap -p- 192.168.1.20 
+
+Service Version Detection
+nmap -sV 192.168.1.20 
+
+Aggressive Scan
+nmap -A 192.168.1.20
+
+OS Detection
+sudo nmap -O 192.168.1.20 
+
+Scan Specific Ports Example scanning web ports:
+nmap -p 80,443,8080 192.168.1.20 
+
+Run Nmap Vulnerability Scripts
+nmap --script vuln 192.168.1.20
+
+Run Default Scripts
+nmap -sC 192.168.1.20
+
+Detect Web Applications
+Metasploitable2 has several web apps.
+Scan HTTP services:
+nmap -p 80 --script http-enum 192.168.1.20 
+
+SYN Scan (Stealth Scan)
+sudo nmap -sS 192.168.1.20 
+
+UDP Scan
+sudo nmap -sU 192.168.1.20 
+
+Scan Entire Network
+nmap 192.168.1.0/24 
+
+Save Scan Results
+nmap -A 192.168.1.20 -oN scan_results.txt
