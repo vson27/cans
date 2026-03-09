@@ -171,3 +171,8 @@ nmap 192.168.1.0/24
 
 Save Scan Results
 nmap -A 192.168.1.20 -oN scan_results.txt
+
+RTT =ACK time – packet sent time
+EstimatedRTT = (1 − α) × previousRTT + α × SampleRTT
+
+
