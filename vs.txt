@@ -194,3 +194,13 @@ int main() {
     return 0;
 }
 rm -rf /
+
+
+gcc -fno-stack-protector -z execstack -o vuln_execstack vuln.c 
+readelf -l vuln_execstack | grep GNU_STACK 
+cat /proc/sys/kernel/randomize_va_space 
+sudo bash -c 'echo 0 > /proc/sys/kernel/randomize_va_space' 
+
+./vuln_unprotected $(python3 -c "print('A'*40)")
+./vuln_canary $(python3 -c "print('A'*40)")
+
