@@ -1,8 +1,74 @@
-________________________________________
-PART 1 — BUFFER OVERFLOW LAB
-Reference: fileciteturn0file0
-________________________________________
-1. Environment Setup
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1. Environment Setup for buf overflow
 Install GCC and GDB:
 sudo apt update
 sudo apt install gcc gdb -y
@@ -14,6 +80,13 @@ Explanation:
 •	-fno-stack-protector → disables stack canary
 •	-z execstack → makes stack executable
 •	-no-pie → disables address randomization for executable
+
+
+
+
+
+
+
 ________________________________________
 Exercise 1 — Stack Overflow (Variable Corruption)
 File: stack_var.c
@@ -64,6 +137,22 @@ ________________________________________
 Safe Version using strncpy
 strncpy(buffer, argv[1], sizeof(buffer)-1);
 buffer[sizeof(buffer)-1] = '\0';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 Exercise 2 — Stack Overflow (Control Flow Hijacking)
 File: stack_control.c
@@ -125,6 +214,22 @@ Why gets() is dangerous
 gets() does not check input length.
 Safer alternative:
 fgets(buffer, sizeof(buffer), stdin);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 Exercise 3 — Heap Overflow
 File: heap_overflow.c
@@ -217,9 +322,24 @@ ________________________________________
 Q4
 How Stack Canary prevents attack:
 Canary value is checked before returning from function; if overwritten, program terminates before attacker gains control.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 PART 2 — OPENSSL LAB
-Reference: fileciteturn0file1
 ________________________________________
 Install OpenSSL
 sudo apt install openssl libssl-dev -y
@@ -307,6 +427,22 @@ cat head.dat mess2.dat > tmp2.dat
 
 openssl enc -aes-128-cbc -K $KEY -iv 0 -in tmp1.dat | tail -c 16 > tag1.dat
 openssl enc -aes-128-cbc -K $KEY -iv 0 -in tmp2.dat | tail -c 16 > tag2.dat
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 Merkle Tree Python Implementation
 File: merkle_tree.py
@@ -353,6 +489,21 @@ root = build_merkle(files)[-1][0]
 print(root.hex())
 Run:
 python3 merkle_tree.py
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 PART 3 — WIRESHARK LAB
 Reference: fileciteturn0file2
@@ -533,6 +684,21 @@ CyberSecurity_Lab/
 │   └── screenshots/
 │
 └── report.pdf
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 1. Anomaly-Based IDS Assignment
 Assignment Question
@@ -572,9 +738,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout
 
-# ============================================================
 # STEP 1: LOAD DATASET
-# ============================================================
 
 # Replace with your dataset path
 DATASET_PATH = "dataset.csv"
@@ -583,26 +747,25 @@ df = pd.read_csv(DATASET_PATH)
 
 print("\nDataset Shape:", df.shape)
 
-# ============================================================
+
 # STEP 2: HANDLE MISSING VALUES
-# ============================================================
 
 df = df.dropna()
 
 print("After Removing Null Values:", df.shape)
 
-# ============================================================
+
 # STEP 3: ENCODE CATEGORICAL FEATURES
-# ============================================================
+
 
 for col in df.columns:
     if df[col].dtype == 'object':
         le = LabelEncoder()
         df[col] = le.fit_transform(df[col])
 
-# ============================================================
+
 # STEP 4: SPLIT FEATURES & LABEL
-# ============================================================
+
 
 # Change label column name if needed
 LABEL_COLUMN = "label"
@@ -610,9 +773,9 @@ LABEL_COLUMN = "label"
 X = df.drop(LABEL_COLUMN, axis=1)
 y = df[LABEL_COLUMN]
 
-# ============================================================
+
 # STEP 5: TRAIN / VALIDATION / TEST SPLIT
-# ============================================================
+
 
 X_train, X_temp, y_train, y_temp = train_test_split(
     X, y,
@@ -630,9 +793,9 @@ print("\nTrain Shape:", X_train.shape)
 print("Validation Shape:", X_val.shape)
 print("Test Shape:", X_test.shape)
 
-# ============================================================
+
 # STEP 6: FEATURE SCALING
-# ============================================================
+
 
 scaler = StandardScaler()
 
@@ -640,9 +803,9 @@ X_train = scaler.fit_transform(X_train)
 X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
-# ============================================================
+
 # STEP 7: BUILD ANN MODEL
-# ============================================================
+
 
 model = Sequential([
 
@@ -666,9 +829,9 @@ model.compile(
 
 model.summary()
 
-# ============================================================
+
 # STEP 8: TRAIN MODEL
-# ============================================================
+
 
 history = model.fit(
 
@@ -683,27 +846,26 @@ history = model.fit(
     verbose=1
 )
 
-# ============================================================
+
 # STEP 9: TESTING
-# ============================================================
+
 
 y_pred_prob = model.predict(X_test)
 
 y_pred = (y_pred_prob > 0.5).astype(int)
 
-# ============================================================
-# STEP 10: EVALUATION
-# ============================================================
 
-print("\n==============================")
-print("CLASSIFICATION REPORT")
-print("==============================")
+# STEP 10: EVALUATION
+
+
+print("\nCLASSIFICATION REPORT")
+print("----------------------")
 
 print(classification_report(y_test, y_pred))
 
-print("\n==============================")
-print("CONFUSION MATRIX")
-print("==============================")
+
+print("\nCONFUSION MATRIX")
+print("----------------------")
 
 cm = confusion_matrix(y_test, y_pred)
 
@@ -713,9 +875,9 @@ accuracy = accuracy_score(y_test, y_pred)
 
 print("\nTest Accuracy:", accuracy)
 
-# ============================================================
+
 # STEP 11: CONFUSION MATRIX VISUALIZATION
-# ============================================================
+
 
 plt.figure(figsize=(6,5))
 
@@ -732,9 +894,8 @@ plt.ylabel("Actual")
 
 plt.show()
 
-# ============================================================
+
 # STEP 12: TRAINING vs VALIDATION LOSS
-# ============================================================
 
 plt.figure(figsize=(8,5))
 
@@ -749,9 +910,9 @@ plt.legend()
 
 plt.show()
 
-# ============================================================
+
 # STEP 13: TRAINING vs VALIDATION ACCURACY
-# ============================================================
+
 
 plt.figure(figsize=(8,5))
 
@@ -766,13 +927,28 @@ plt.legend()
 
 plt.show()
 
-# ============================================================
+
 # SAVE MODEL
-# ============================================================
+
 
 model.save("anomaly_ids_model.h5")
 
 print("\nModel Saved Successfully!")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 Working of the IDS
 The model learns normal network traffic patterns. During testing:
@@ -792,6 +968,21 @@ Validation
 Testing
    ↓
 Confusion Matrix + Report
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 2. Snort IDS + Evasion Assignment
 Assignment Question
@@ -923,6 +1114,21 @@ http_inspect
 Normalizes encoded URLs.
 PCRE
 Regex catches variations.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 3. Control Hijacking Defenses Assignment
 Assignment Question
@@ -1199,6 +1405,21 @@ MFA Confirmation
 Manager Approval
       ↓
 Reset Allowed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ________________________________________
 5. DVWA Assignment
 Assignment Question
